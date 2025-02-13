@@ -1,0 +1,15 @@
+beautifulsoup4
+requests
+streamlit
+nltk
+textblob
+matplotlib
+wordcloud
+transformers
+torch
+spacy
+networkx
+langdetect
+googletrans==4.0.0-rc1
+gtts
+numpy
