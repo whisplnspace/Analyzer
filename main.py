@@ -21,7 +21,7 @@ import numpy as np
 nltk.download('punkt')
 nlp = spacy.load("en_core_web_sm")
 
-st.title("📰 AI-Powered News Analyzer with Knowledge Graphs")
+st.title("📰 NewsIntelGraph: AI-Powered Insight Analyzer")
 
 # User input for topic
 topic = st.text_input("Enter a news topic:")
