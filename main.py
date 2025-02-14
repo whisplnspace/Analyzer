@@ -11,15 +11,15 @@ import networkx as nx
 import io
 from langdetect import detect
 from googletrans import Translator
-from gtts import gTTS
 import numpy as np
 
-# Install necessary packages
-# Run the following command in terminal before executing the script:
-# pip install streamlit requests beautifulsoup4 nltk textblob matplotlib wordcloud transformers torch spacy networkx langdetect googletrans gtts
-
+# Install NLTK data if not downloaded
 nltk.download('punkt')
-nlp = spacy.load("en_core_web_sm")
+
+# Load spaCy model (lazily to prevent deployment issues)
+@st.cache_resource
+def load_spacy():
+    return spacy.load("en_core_web_sm")
 
 st.title("📰 NewsIntelGraph: AI-Powered Insight Analyzer")
 
@@ -44,6 +44,8 @@ if topic:
         article_sentiments = []
         entity_freq = {}
 
+        nlp = load_spacy()
+
         for idx, article in enumerate(articles):
             title = article.text
             link = article['href']
@@ -55,13 +57,10 @@ if topic:
             sentiment_score = blob.sentiment.polarity
             article_sentiments.append(sentiment_score)
 
-            # Named Entity Frequency Analysis
+            # Named Entity Recognition
             doc = nlp(title)
             for ent in doc.ents:
-                if ent.text in entity_freq:
-                    entity_freq[ent.text] += 1
-                else:
-                    entity_freq[ent.text] = 1
+                entity_freq[ent.text] = entity_freq.get(ent.text, 0) + 1
 
         # Sentiment Analysis Summary
         sentiment_score = np.mean(article_sentiments)
@@ -73,8 +72,8 @@ if topic:
         else:
             st.warning("Overall Sentiment: Neutral 😐")
 
-        # Sentiment Distribution - Statistical Graph
-        st.subheader("Sentiment Score Distribution of Articles:")
+        # Sentiment Distribution
+        st.subheader("Sentiment Score Distribution:")
         fig, ax = plt.subplots()
         ax.hist(article_sentiments, bins=10, color='skyblue', edgecolor='black')
         ax.set_xlabel("Sentiment Score")
@@ -83,17 +82,20 @@ if topic:
         st.pyplot(fig)
 
         # Word Cloud
-        wordcloud = WordCloud(width=800, height=400, background_color='white').generate(full_text)
-        fig, ax = plt.subplots()
-        ax.imshow(wordcloud, interpolation='bilinear')
-        ax.axis("off")
-        st.pyplot(fig)
+        if full_text.strip():
+            wordcloud = WordCloud(width=800, height=400, background_color='white').generate(full_text)
+            fig, ax = plt.subplots()
+            ax.imshow(wordcloud, interpolation='bilinear')
+            ax.axis("off")
+            st.subheader("Word Cloud of News Headlines:")
+            st.pyplot(fig)
 
         # Summarization
-        summarizer = pipeline("summarization")
-        summary = summarizer(full_text, max_length=50, min_length=25, do_sample=False)[0]['summary_text']
-        st.subheader("AI Summary of Topic:")
-        st.write(summary)
+        if len(full_text.split()) > 10:
+            summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+            summary = summarizer(full_text[:1024], max_length=50, min_length=25, do_sample=False)[0]['summary_text']
+            st.subheader("AI Summary of Topic:")
+            st.write(summary)
 
         # Language Detection and Translation
         lang = detect(full_text)
@@ -108,41 +110,39 @@ if topic:
 
         # Knowledge Graph Generation
         st.subheader("Knowledge Graph of Named Entities:")
-        doc = nlp(full_text)
         graph = nx.DiGraph()
-
-        for ent in doc.ents:
-            graph.add_edge(topic, ent.text)
+        for entity in entity_freq.keys():
+            graph.add_edge(topic, entity)
 
         plt.figure(figsize=(10, 6))
         pos = nx.spring_layout(graph)
-        nx.draw(graph, pos, with_labels=True, node_color='lightblue', edge_color='gray', node_size=2000, font_size=10,
-                font_weight='bold')
+        nx.draw(graph, pos, with_labels=True, node_color='lightblue', edge_color='gray', node_size=2000, font_size=10, font_weight='bold')
         st.pyplot(plt)
 
-        # Trend Analysis (Visualizing the Frequency of Named Entities)
+        # Trend Analysis (Top Entities)
         sorted_entities = sorted(entity_freq.items(), key=lambda x: x[1], reverse=True)[:10]
         st.subheader("Top 10 Most Frequent Entities:")
         for entity, freq in sorted_entities:
             st.write(f"{entity}: {freq}")
 
-        # Statistical Graph for Named Entity Frequency Distribution
+        # Named Entity Frequency Distribution
         st.subheader("Named Entity Frequency Distribution:")
-        entity_names = list(entity_freq.keys())
-        entity_counts = list(entity_freq.values())
+        if entity_freq:
+            entity_names = list(entity_freq.keys())
+            entity_counts = list(entity_freq.values())
 
-        fig, ax = plt.subplots()
-        ax.barh(entity_names, entity_counts, color='lightgreen')
-        ax.set_xlabel('Frequency')
-        ax.set_ylabel('Named Entities')
-        ax.set_title('Frequency Distribution of Named Entities')
-        st.pyplot(fig)
+            fig, ax = plt.subplots()
+            ax.barh(entity_names, entity_counts, color='lightgreen')
+            ax.set_xlabel('Frequency')
+            ax.set_ylabel('Named Entities')
+            ax.set_title('Frequency Distribution of Named Entities')
+            st.pyplot(fig)
 
         # Trending Keywords
-        keyword_cloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(
-            entity_freq)
-        fig, ax = plt.subplots()
-        ax.imshow(keyword_cloud, interpolation='bilinear')
-        ax.axis("off")
-        st.subheader("Trending Keywords in News:")
-        st.pyplot(fig)
+        if entity_freq:
+            keyword_cloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(entity_freq)
+            fig, ax = plt.subplots()
+            ax.imshow(keyword_cloud, interpolation='bilinear')
+            ax.axis("off")
+            st.subheader("Trending Keywords in News:")
+            st.pyplot(fig)
